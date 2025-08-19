@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>M0F0K3NG</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 10px;
+            font-size: 14px;
+            background-color: #f5f5f5;
+        }
+        .pair-card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .pair-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .pair-name {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .data-status {
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+        .status-fresh {
+            background: #e6f7e6;
+            color: #2e7d32;
+        }
+        .status-stale {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .status-error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+        }
+        .price {
+            font-family: monospace;
+        }
+        .trend {
+            text-align: center;
+            padding: 6px;
+            border-radius: 6px;
+            margin: 8px 0;
+            font-weight: bold;
+        }
+        .bull {
+            background-color: rgba(46, 125, 50, 0.1);
+            color: #2e7d32;
+        }
+        .bear {
+            background-color: rgba(198, 40, 40, 0.1);
+            color: #c62828;
+        }
+        .time {
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+        }
+        .refresh-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin: 15px 0;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        h2 {
+            color: #4285f4;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h2>👑🐰M0F0K3NG🐇👑</h2>
+    <div id="pairs-container"></div>
+    <button class="refresh-btn" onclick="updateAllPairs()">🔄 Refresh Data</button>
+    
+    <script>
+    // Assign pairs to specific API keys
+    const forexPairs = [
+        { symbol: "EUR/JPY", apiKey: "624f9e4078604ce991ba6674e83821a5" },
+        { symbol: "EUR/USD", apiKey: "8af7e3446e97437192e5a6cb2b4d36ff" },
+        { symbol: "NZD/CAD", apiKey: "c96c99c8a04c4dff8e84abd78b35aac3" },
+        { symbol: "XAU/USD", apiKey: "e6bab482e5b64bf49fb157870ddbceb2" },
+        { symbol: "GBP/USD", apiKey: "ba03111403f34190b6bf88b8271d50fd" },
+        { symbol: "USD/JPY", apiKey: "d877929923914e1bae7458991b962977" },
+        { symbol: "AUD/USD", apiKey: "236db7beeb3f4f9a921fa850fe8a032d" },
+        { symbol: "USD/CAD", apiKey: "0e15651e9aae4d2093ec7b5f7ecaf6ff" }
+    ];
+
+    function toSAST(utcDate) {
+        const date = new Date(utcDate);
+        date.setHours(date.getHours() + 2);
+        return date.toLocaleTimeString("en-ZA", { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            timeZone: 'Africa/Johannesburg'
+        });
+    }
+
+    async function fetchForexData(pairObj) {
+        try {
+            const response = await fetch(`https://api.twelvedata.com/time_series?symbol=${pairObj.symbol}&interval=5min&outputsize=1&apikey=${pairObj.apiKey}`);
+            const data = await response.json();
+            
+            if (!data.values || !data.values[0]) {
+                return { 
+                    pair: pairObj.symbol, 
+                    trend: "❌ No data", 
+                    open: "N/A", 
+                    close: "N/A", 
+                    time: "N/A",
+                    isRecent: false,
+                    error: true
+                };
+            }
+            
+            const candle = data.values[0];
+            const open = parseFloat(candle.open);
+            const close = parseFloat(candle.close);
+            const trend = close > open ? "🟢 Bull" : "🔴 Bear";
+            const candleTime = new Date(candle.datetime);
+            // Updated to 5 minutes (300000 ms) for 5min chart
+            const isRecent = (new Date() - candleTime) < 300000;
+            
+            return { 
+                pair: pairObj.symbol, 
+                trend,
+                open: open.toFixed(5),
+                close: close.toFixed(5),
+                time: `${toSAST(candle.datetime)} (5m)`,
+                isRecent,
+                error: false
+            };
+            
+        } catch (error) {
+            return { 
+                pair: pairObj.symbol, 
+                trend: "❌ Error", 
+                open: "N/A", 
+                close: "N/A", 
+                time: "N/A",
+                isRecent: false,
+                error: true
+            };
+        }
+    }
+
+    function getStatusElement(pairData) {
+        if (pairData.error) return '<span class="data-status status-error">DATA ERROR</span>';
+        if (!pairData.isRecent) return '<span class="data-status status-stale">STALE DATA</span>';
+        return '<span class="data-status status-fresh">LIVE DATA</span>';
+    }
+
+    function updatePairCard(pairData) {
+        let card = document.getElementById(`card-${pairData.pair}`);
+        const statusElement = getStatusElement(pairData);
+        
+        if (!card) {
+            card = document.createElement("div");
+            card.className = "pair-card";
+            card.id = `card-${pairData.pair}`;
+            card.innerHTML = `
+                <div class="pair-header">
+                    <span class="pair-name">${pairData.pair}</span>
+                    ${statusElement}
+                </div>
+                <div class="price-row">
+                    <span>Open: <span class="price">${pairData.open}</span></span>
+                    <span>Close: <span class="price">${pairData.close}</span></span>
+                </div>
+                <div class="trend ${pairData.trend.includes("Bull") ? "bull" : "bear"}">
+                    ${pairData.trend}
+                </div>
+                <div class="time">${pairData.time}</div>
+            `;
+            document.getElementById("pairs-container").appendChild(card);
+        } else {
+            card.innerHTML = `
+                <div class="pair-header">
+                    <span class="pair-name">${pairData.pair}</span>
+                    ${statusElement}
+                </div>
+                <div class="price-row">
+                    <span>Open: <span class="price">${pairData.open}</span></span>
+                    <span>Close: <span class="price">${pairData.close}</span></span>
+                </div>
+                <div class="trend ${pairData.trend.includes("Bull") ? "bull" : "bear"}">
+                    ${pairData.trend}
+                </div>
+                <div class="time">${pairData.time}</div>
+            `;
+        }
+    }
+
+    async function updateAllPairs() {
+        document.querySelector(".refresh-btn").textContent = "⏳ Updating...";
+        try {
+            for (const pairObj of forexPairs) {
+                const pairData = await fetchForexData(pairObj);
+                updatePairCard(pairData);
+            }
+        } finally {
+            document.querySelector(".refresh-btn").textContent = "🔄 Refresh Data";
+        }
+    }
+
+    // Initial load + update every 5 minutes (300000 ms)
+    updateAllPairs();
+    setInterval(updateAllPairs, 300000);
+    </script>
+</body>
+</html>
